@@ -8,7 +8,7 @@ buildscript {
     dependencies {
         classpath(libs.agp)
         classpath(libs.kotlinGradlePlugin)
-        classpath("com.google.gms:google-services:4.3.15")
+        classpath("com.google.gms:google-services:4.4.1")
     }
 }
 
@@ -22,7 +22,7 @@ allprojects {
 }
 
 plugins {
-    id("com.github.ben-manes.versions") version "0.47.0"
+    id("com.github.ben-manes.versions") version "0.51.0"
 }
 
 tasks.named("dependencyUpdates", com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask::class.java).configure {

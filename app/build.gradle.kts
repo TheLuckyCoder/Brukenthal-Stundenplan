@@ -83,7 +83,7 @@ dependencies {
     implementation(libs.compose.material)
     implementation(libs.compose.animationGraphics)
     implementation(libs.compose.toolingPreview)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     debugImplementation(libs.compose.tooling)
     debugImplementation(libs.kotlin.reflect)
 
@@ -91,11 +91,11 @@ dependencies {
     implementation(libs.voyager.navigator)
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:32.2.3"))
+    implementation(platform("com.google.firebase:firebase-bom:32.8.0"))
     implementation("com.google.firebase:firebase-config-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Other
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:retrofit:2.10.0")
     implementation("com.davemorrissey.labs:subsampling-scale-image-view-androidx:3.10.0")
 }

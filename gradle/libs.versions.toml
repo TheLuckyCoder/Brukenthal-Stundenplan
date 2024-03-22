@@ -1,18 +1,18 @@
 [versions]
-agp = "8.2.0-beta03"
-kotlin = "1.9.10"
-kotlin_coroutines = "1.7.3"
-compose_base = "1.5.1"
-compose_activity = "1.7.2"
-compose_compiler = "1.5.3"
-compose_material3 = "1.1.1"
-voyager = "1.0.0-rc07"
+agp = "8.3.1"
+kotlin = "1.9.23"
+kotlin_coroutines = "1.8.0"
+compose_base = "1.6.4"
+compose_activity = "1.8.2"
+compose_compiler = "1.5.11"
+compose_material3 = "1.2.1"
+voyager = "1.0.0"
 
-androidx_room = "2.5.2"
-androidx_activity = "1.7.2"
+androidx_room = "2.6.1"
+androidx_activity = "1.8.2"
 androidx_datastore = "1.0.0"
 androidx_splash = "1.0.1"
-androidx_browser = "1.6.0"
+androidx_browser = "1.8.0"
 
 [libraries]
 agp = { module = "com.android.tools.build:gradle", version.ref = "agp" }
