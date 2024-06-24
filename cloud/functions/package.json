@@ -16,7 +16,7 @@
   "dependencies": {
     "@types/jsdom": "21.1.1",
     "firebase-admin": "11.6.0",
-    "firebase-functions": "4.2.1",
+    "firebase-functions": "5.0.1",
     "jsdom": "21.1.1",
     "node-fetch": "2.6.9",
     "optionator": "0.9.1"
