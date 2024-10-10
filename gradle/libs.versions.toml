@@ -1,6 +1,6 @@
 [versions]
 agp = "8.5.0"
-kotlin = "1.9.24"
+kotlin = "2.0.21"
 kotlin_coroutines = "1.8.1"
 compose_base = "1.6.8"
 compose_activity = "1.9.0"
