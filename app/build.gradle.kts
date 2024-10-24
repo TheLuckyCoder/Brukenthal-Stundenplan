@@ -91,7 +91,7 @@ dependencies {
     implementation(libs.voyager.navigator)
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:33.1.1"))
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-config")
     implementation("com.google.firebase:firebase-messaging")
 
