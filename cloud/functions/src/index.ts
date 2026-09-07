@@ -1,7 +1,5 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
-import fetch from 'node-fetch';
-import {JSDOM} from 'jsdom';
 
 admin.initializeApp();
 
@@ -82,12 +80,12 @@ function randomInt(min: number, max: number): number {
 function processRemoteConfigTemplate(template: admin.remoteConfig.RemoteConfigTemplate): ConfigValues {
     const parameters = template.parameters;
 
-    const highSchoolDefault = parameters[KEY_HIGH_SCHOOL].defaultValue as
-        admin.remoteConfig.ExplicitParameterValue;
-    const middleSchoolDefault = parameters[KEY_MIDDLE_SCHOOL].defaultValue as
-        admin.remoteConfig.ExplicitParameterValue;
+    const highSchoolDefault = (parameters[KEY_HIGH_SCHOOL]?.defaultValue as
+        admin.remoteConfig.ExplicitParameterValue)?.value ?? "";
+    const middleSchoolDefault = (parameters[KEY_MIDDLE_SCHOOL]?.defaultValue as
+        admin.remoteConfig.ExplicitParameterValue)?.value ?? "";
 
-    return new ConfigValues(highSchoolDefault.value, middleSchoolDefault.value);
+    return new ConfigValues(highSchoolDefault, middleSchoolDefault);
 }
 
 /**
@@ -115,18 +113,44 @@ async function updateRemoteConfig(newConfigValues: ConfigValues): Promise<void> 
         };
 
         // Publish the updated template
-        return config.publishTemplate(template)
-            .then(() => {
-                console.log("Template has been published");
-            })
-            .catch(err => {
-                console.error("Unable to publish template.");
-                console.error(err);
-            });
+        try {
+            await config.publishTemplate(template);
+            console.log("Template has been published");
+        } catch (err) {
+            console.error("Unable to publish template:", err);
+        }
     }
+}
 
-    // There's nothing to do so return an empty Promise
-    return Promise.resolve();
+/**
+ * Fetches HTML from the school website with a browser User-Agent and retry logic
+ */
+async function fetchTimetableHtml(): Promise<string | null> {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const response = await fetch(SITE_URL, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept-Language': 'ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7'
+                },
+                signal: AbortSignal.timeout(15000)
+            });
+
+            if (response.ok) {
+                return await response.text();
+            }
+            console.warn(`Attempt ${attempt}: ${SITE_URL} returned HTTP ${response.status} ${response.statusText}`);
+        } catch (err) {
+            console.warn(`Attempt ${attempt} to fetch ${SITE_URL} failed:`, err);
+        }
+
+        if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
+    return null;
 }
 
 /// Firebase Functions
@@ -136,28 +160,54 @@ async function updateRemoteConfig(newConfigValues: ConfigValues): Promise<void> 
  */
 exports.checkForNewTimetable = functions
     .region('europe-west1')
+    .runWith({ memory: '512MB' })
     .pubsub
     .schedule('every 50 minutes')
     .onRun(async () => {
-        // Fetch and store the site as HTML
-        const html = await fetch(SITE_URL).then(data => data.text())
+        try {
+            const html = await fetchTimetableHtml();
+            if (!html) {
+                console.error("Could not fetch timetable HTML after retries.");
+                return;
+            }
 
-        // Parse the HTML
-        const dom = new JSDOM(html);
-        const doc = dom.window.document;
+            // Extract the timetable URLs with regex
+            const highSchoolMatch = html.match(/<li[^>]*\bmenu-item-1470\b[^>]*>[\s\S]*?<a\b[^>]*\bhref="([^"]+)"/i);
+            const middleSchoolMatch = html.match(/<li[^>]*\bmenu-item-1320\b[^>]*>[\s\S]*?<a\b[^>]*\bhref="([^"]+)"/i);
 
-        // Get the urls
-        // TODO: This part has to be changed if the website is changed!!!
-        const middleSchoolUrl =
-            doc.querySelector("li.menu-item-1320 a")!.getAttribute("href")!;
-        const highSchoolUrl =
-            doc.querySelector("li.menu-item-1470 a")!.getAttribute("href")!;
+            if (!highSchoolMatch || !middleSchoolMatch) {
+                const candidateLinks = Array.from(
+                    new Set([...html.matchAll(/href="([^"]*(?:orar|stundenplan)[^"]*\.pdf)"/gi)].map(m => m[1]))
+                );
 
-        const newConfigValues = new ConfigValues(
-            highSchoolUrl.startsWith(SITE_URL) ? highSchoolUrl : (SITE_URL + highSchoolUrl),
-            middleSchoolUrl.startsWith(SITE_URL) ? middleSchoolUrl : (SITE_URL + middleSchoolUrl),
-        );
-        return updateRemoteConfig(newConfigValues);
+                console.error([
+                    "================================================================================",
+                    "[ERROR] School website structure changed! Could not locate timetable URLs.",
+                    `Site: ${SITE_URL}`,
+                    "Selector status:",
+                    `  - High School (menu-item-1470): ${highSchoolMatch ? highSchoolMatch[1] : "NOT FOUND"}`,
+                    `  - Middle School (menu-item-1320): ${middleSchoolMatch ? middleSchoolMatch[1] : "NOT FOUND"}`,
+                    candidateLinks.length > 0
+                        ? `Candidate timetable PDF links discovered on the page:\n${candidateLinks.map(url => `    * ${url}`).join("\n")}`
+                        : "No candidate timetable PDF links found on page.",
+                    "Action Required: Inspect https://brukenthal.ro and update selectors in cloud/functions/src/index.ts.",
+                    "================================================================================"
+                ].join("\n"));
+                return;
+            }
+
+            const highSchoolUrl = highSchoolMatch[1];
+            const middleSchoolUrl = middleSchoolMatch[1];
+
+            const newConfigValues = new ConfigValues(
+                highSchoolUrl.startsWith(SITE_URL) ? highSchoolUrl : (SITE_URL + highSchoolUrl),
+                middleSchoolUrl.startsWith(SITE_URL) ? middleSchoolUrl : (SITE_URL + middleSchoolUrl),
+            );
+
+            await updateRemoteConfig(newConfigValues);
+        } catch (error) {
+            console.error("Error checking for new timetable:", error);
+        }
     });
 
 /**
@@ -171,13 +221,15 @@ exports.sendNewTimetableNotification = functions
     .onUpdate(async (versionMetadata) => {
         const config = admin.remoteConfig(); // Get Access to Firebase Remote Config
 
-        // Get both the current and the previous template
-        const newTemplate = config.getTemplate();
-        const oldTemplate = config.getTemplateAtVersion(versionMetadata.versionNumber - 1);
+        // Fetch both the current and the previous template concurrently in parallel
+        const [newTemplate, oldTemplate] = await Promise.all([
+            config.getTemplate(),
+            config.getTemplateAtVersion(versionMetadata.versionNumber - 1)
+        ]);
 
         // Parse the templates
-        const newValues = processRemoteConfigTemplate(await newTemplate);
-        const oldValues = processRemoteConfigTemplate(await oldTemplate);
+        const newValues = processRemoteConfigTemplate(newTemplate);
+        const oldValues = processRemoteConfigTemplate(oldTemplate);
 
         let titlePrefix = "";
         let channel = CHANNEL_ID_DEFAULT; // By default, send the notification to everyone
@@ -192,8 +244,9 @@ exports.sendNewTimetableNotification = functions
             titlePrefix = "Gymnasium: ";
             channel = CHANNEL_ID_MIDDLE_SCHOOL;
 
-        } else if (oldValues.middleSchool === newValues.middleSchool && oldValues.highSchool === newValues.highSchool)
-            return // None of the links have changed, do not send a notification
+        } else if (oldValues.middleSchool === newValues.middleSchool && oldValues.highSchool === newValues.highSchool) {
+            return; // None of the links have changed, do not send a notification
+        }
 
         // Get a random title and message for the notification
         const selectedTitle = TITLES[randomInt(0, TITLES.length - 1)];
@@ -208,10 +261,10 @@ exports.sendNewTimetableNotification = functions
             condition: "\'all\' in topics"
         };
 
-        return admin.messaging().send(payload).then(_ =>
-            console.log("Notification sent")
-        ).catch(err => {
-            console.error("Notification failed to send");
-            console.error(err)
-        });
+        try {
+            await admin.messaging().send(payload);
+            console.log("Notification sent successfully");
+        } catch (err) {
+            console.error("Notification failed to send:", err);
+        }
     });
